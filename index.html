@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Taint Log</title>
+<meta name="description" content="AI-assisted security research notes by Ayush-M99: what was tested, what it showed, and what has not been tested yet.">
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=JetBrains+Mono:wght@400;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap">
+<style>
+/* Layout: one reading column with a narrow rail of posts. Code gets a "matched" highlight, the page's one flourish. */
+:root {
+  --paper: #eef2f5;
+  --panel: #e1e8ee;
+  --ink: #14233a;
+  --muted: #526276;
+  --rule: #c3cfda;
+  --accent: #1b5e8c;
+  --match: #ffdc5e;
+  --match-ink: #14233a;
+  --miss: #a83a2c;
+  --hit: #1c7a4f;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "Source Serif 4", Georgia, serif;
+  --mono: "JetBrains Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --paper: #0f1a2b; --panel: #18273c; --ink: #dce6f0; --muted: #9aaabc; --rule: #2c3f57;
+    --accent: #7fbde6; --match: #e8c64b; --match-ink: #14233a; --miss: #f0917f; --hit: #6fd3a5;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #0f1a2b; --panel: #18273c; --ink: #dce6f0; --muted: #9aaabc; --rule: #2c3f57;
+  --accent: #7fbde6; --match: #e8c64b; --match-ink: #14233a; --miss: #f0917f; --hit: #6fd3a5;
+}
+body {
+  background: var(--paper); color: var(--ink);
+  font: 400 1.09rem/1.65 var(--body);
+  padding-block: 48px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1040px; margin-inline: auto; display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 48px; }
+header.mast { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 8px; border-bottom: 2px solid var(--ink); padding-bottom: 24px; }
+.mast h1 { font: 700 clamp(2.4rem, 7vw, 4rem)/1 var(--display); margin: 0; letter-spacing: -.02em; }
+.mast h1 mark { background: var(--match); color: var(--match-ink); padding: 0 .12em; }
+.mast p { margin: 0; color: var(--muted); max-width: 62ch; }
+nav.rail { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); align-self: start; display: flex; flex-direction: column; gap: 16px; font: 400 .9rem/1.35 var(--display); }
+nav.rail h2 { font: 600 .72rem/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0; }
+nav.rail a { color: var(--ink); text-decoration: none; }
+nav.rail a:hover, nav.rail a:focus-visible { color: var(--accent); text-decoration: underline; }
+main { display: flex; flex-direction: column; gap: 64px; min-width: 0; }
+article { display: flex; flex-direction: column; gap: 16px; max-width: 68ch; scroll-margin-top: 24px; }
+article h2 { font: 700 clamp(1.6rem, 4vw, 2.15rem)/1.15 var(--display); margin: 0; text-wrap: balance; letter-spacing: -.01em; }
+article h3 { font: 600 1.15rem/1.3 var(--display); margin: 12px 0 0; }
+article p, article ul { margin: 0; }
+article ul { padding-left: 1.2em; display: flex; flex-direction: column; gap: 6px; }
+a { color: var(--accent); }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.meta { font: 400 .78rem/1.5 var(--mono); color: var(--muted); }
+.note { border-left: 3px solid var(--accent); padding: 4px 0 4px 16px; color: var(--muted); font-size: .98rem; }
+pre { margin: 0; background: var(--panel); padding: 16px; overflow-x: auto; font: 400 .84rem/1.6 var(--mono); }
+code { font-family: var(--mono); font-size: .88em; }
+pre mark { background: var(--match); color: var(--match-ink); }
+.table { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font: 400 .86rem/1.4 var(--mono); }
+th { text-align: left; font-weight: 600; color: var(--muted); }
+th, td { padding: 8px 16px 8px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+td.n { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.miss { color: var(--miss); font-weight: 600; }
+.hit { color: var(--hit); font-weight: 600; }
+footer { grid-column: 2; color: var(--muted); font-size: .92rem; max-width: 68ch; border-top: 1px solid var(--rule); padding-top: 16px; }
+@media (max-width: 760px) {
+  .wrap { grid-template-columns: minmax(0, 1fr); gap: 32px; }
+  nav.rail { position: static; }
+  footer { grid-column: 1; }
+}
+</style>
+
+<div class="wrap">
+  <header class="mast">
+    <h1>Taint <mark>Log</mark></h1>
+    <p>Notes from AI-assisted security research: what was tested, what it showed, and what has not been tested yet. Written with Claude for <a href="https://github.com/Ayush-M99">Ayush-M99</a>.</p>
+  </header>
+
+  <nav class="rail" aria-label="Posts">
+    <h2>Posts</h2>
+    <a href="#semgrep-gaps">Three gaps in Semgrep's MCP security rules</a>
+    <a href="#benchmark-method">Benchmark rules we took from LLMScanBench</a>
+    <a href="#sigma-results">LLM-written Sigma rules against real attacks</a>
+    <a href="#slopsquat-results">How often LLMs invent packages</a>
+    <a href="#tracker">What is done and what is not</a>
+  </nav>
+
+  <main>
+    <article id="semgrep-gaps">
+      <p class="meta">2026-10-30 · Semgrep 1.181.0 · semgrep-rules develop at 16b9e6d45f</p>
+      <h2>Three gaps in Semgrep's MCP security rules</h2>
+      <p class="note">Drafted by Claude, including the rule reading, the test cases and the patch. Approved for publication by Ayush-M99. Filed as <a href="https://github.com/semgrep/semgrep-rules/issues/4127">semgrep-rules #4127</a>, with the fix in <a href="https://github.com/semgrep/semgrep-rules/pull/4128">PR #4128</a>.</p>
+
+      <p>MCP servers expose functions to AI agents, and the agent fills in the arguments. Text that reaches a tool parameter may come from a web page or file the agent read, so a parameter passed to a shell is a command injection risk. Semgrep ships rules for this, and we tested how much they catch.</p>
+
+      <h3>Gap 1: the decorator has to be empty</h3>
+      <p><code>mcp-command-injection-python</code> marks tool parameters as untrusted, but its pattern only matches the decorator with empty parentheses. Add a description and the parameter is no longer tracked.</p>
+<pre><code>@mcp.tool()                          # flagged
+def ping(host: str) -> int:
+    return os.system(<mark>"ping " + host</mark>)
+
+@mcp.tool(description="Ping a host") # missed
+def ping(host: str) -> int:
+    return os.system("ping " + host)</code></pre>
+      <p>The rule's test file only uses the empty form, so its tests could not show this. The fix is one token: <code>@$SERVER.tool(...)</code>. Three more rules share the gap: <code>mcp-ssrf-python</code>, <code>mcp-unsanitized-return-python</code> and <code>mcp-credential-in-response-python</code>. Each flagged the empty form and missed the form with arguments, and each flagged both after the same one-token change. A sibling rule, <code>mcp-typosquatted-tool-name-python</code>, already handles arguments.</p>
+
+      <h3>Gap 2: a short list of shell sinks</h3>
+      <p>The rule lists <code>os.system</code>, <code>eval</code>, <code>exec</code>, and <code>subprocess.run</code>, <code>call</code> and <code>Popen</code>. Everyday alternatives such as <code>os.popen</code>, <code>subprocess.check_output</code> and <code>subprocess.getoutput</code> pass silently.</p>
+
+      <h3>Gap 3: nothing may follow shell=True</h3>
+      <p><code>llm-output-to-exec-python</code> flags model output that reaches a shell. Its patterns end at <code>shell=True</code>, so one more keyword after it hides the call. Argument order alone decides the result.</p>
+<pre><code>subprocess.run(<mark>cmd</mark>, shell=True)                       # flagged
+subprocess.run(<mark>cmd</mark>, capture_output=True, shell=True)  # flagged
+subprocess.run(cmd, shell=True, capture_output=True)  # missed</code></pre>
+
+      <h3>Results</h3>
+      <div class="table"><table>
+        <thead><tr><th>Rule</th><th>Unsafe flagged, current</th><th>Unsafe flagged, patched</th><th>Safe flagged, patched</th></tr></thead>
+        <tbody>
+          <tr><td>mcp-command-injection-python</td><td class="n miss">2 of 9</td><td class="n hit">10 of 10</td><td class="n hit">0 of 7</td></tr>
+          <tr><td>llm-output-to-exec-python</td><td class="n miss">2 of 6</td><td class="n hit">7 of 7</td><td class="n hit">0 of 3</td></tr>
+        </tbody>
+      </table></div>
+      <p>The patched runs each include one extra unsafe case. The safe cases include list arguments, <code>shlex.quote</code>, calls with no <code>shell=True</code>, and functions with other decorators.</p>
+      <p>We then ran both patched rules against their extended test files, using the playground's <code>ruleid</code> and <code>ok</code> assertions. All passed: 16 of 16 for the MCP rule and 13 of 13 for the LLM rule.</p>
+
+      <h3>Limits of this test</h3>
+      <ul>
+        <li>These are cases we wrote to probe the gaps, so the percentages say nothing about real-world detection rates.</li>
+        <li>We ran the rules in the Semgrep playground, with message and metadata omitted. A <code>semgrep test</code> run on a checkout is still to do.</li>
+        <li>The three test cases added for <code>mcp-ssrf-python</code>, <code>mcp-unsanitized-return-python</code> and <code>mcp-credential-in-response-python</code> have not been run as written.</li>
+        <li>For <code>mcp-ssrf-python</code> and <code>mcp-unsanitized-return-python</code> we tested reduced rules that use only <code>requests.get</code>.</li>
+      </ul>
+    </article>
+
+    <article id="benchmark-method">
+      <p class="meta">2026-10-30 · Method notes · Written before the first benchmark run</p>
+      <h2>Benchmark rules we took from LLMScanBench</h2>
+      <p class="note">Drafted by Claude. Approved for publication by Ayush-M99.</p>
+
+      <p>We planned two benchmarks: whether LLMs can write working Sigma detection rules, and how often they invent package names. Before running them we read <a href="https://www.harness.io/blog/llmscanbench-q3-2026-choosing-the-right-approach-for-ai-vulnerability-discovery">LLMScanBench Q3 2026</a>, Harness's benchmark of LLM vulnerability scanners. It changed our plan in five ways. The first run did not meet all of them, and the table at the end says which.</p>
+
+      <h3>Run everything more than once</h3>
+      <p>Harness scanned the same WebGoat code three times and got 16.2%, 19.7% and 35.5% recall. A single run could have reported any of those. We will run each model and prompt at least three times and report the spread.</p>
+
+      <h3>Assume the model has seen the test</h3>
+      <p>Harness points out that models may recognise well-known test applications, and that one benchmark ships its answer key in the repository. Public Sigma rules carry the same risk. We will keep rule titles out of prompts and report rules added after each model's knowledge cutoff separately.</p>
+
+      <h3>Never report precision alone</h3>
+      <p>Scanners there scored 85% to 100% precision while missing most vulnerabilities in WebGoat and Juice Shop. A Sigma rule that never fires also produces no false positives. We will report both numbers.</p>
+
+      <h3>Measure cost and time</h3>
+      <p>The two LLM scanners cost $21.79 to $133.58 per scan in Harness's tests. Accuracy alone will not tell a team whether a model is usable, so we will record both.</p>
+
+      <h3>Think about who reads the output</h3>
+      <p>This one is ours. The attack we are measuring works when someone registers a name that models keep inventing. <a href="https://www.harness.io/blog/poisoning-the-pipeline-how-the-mastra-ai-ecosystem-was-poisoned-at-the-registry-level">The Mastra compromise</a> shows how much damage one lookalike package can do. Publishing those names would hand attackers a list, so we will publish rates and redacted examples, and we will not register any name.</p>
+
+      <h3>What the first run met</h3>
+      <div class="table"><table>
+        <thead><tr><th>Plan</th><th>First run</th></tr></thead>
+        <tbody>
+          <tr><td>At least three runs per prompt</td><td><span class="miss">Not met.</span> One sample per task in both benchmarks</td></tr>
+          <tr><td>Rule titles kept out of prompts</td><td><span class="miss">Not met.</span> The Sigma prompt includes each rule's title and description</td></tr>
+          <tr><td>Rules after knowledge cutoff reported apart</td><td><span class="miss">Not met.</span> No holdout</td></tr>
+          <tr><td>Cost and time recorded</td><td><span class="miss">Not met.</span> The package benchmark logs latency but does not report it. Neither reports cost</td></tr>
+          <tr><td>False positives and detection both reported</td><td><span class="hit">Met</span> for Sigma</td></tr>
+          <tr><td>Names withheld, none registered</td><td><span class="hit">Mostly met.</span> Raw name lists are kept out of the repo</td></tr>
+        </tbody>
+      </table></div>
+    </article>
+
+    <article id="sigma-results">
+      <p class="meta">October 2026 run · sigma-llm-bench at 38c7cc3f · 4 models · 60 rules</p>
+      <h2>LLM-written Sigma rules against real attacks</h2>
+      <p class="note">Benchmark built and summarised by Claude. This post was checked against the repo's results files, and the benchmark was not rerun for it. Approved for publication by Ayush-M99. Code, prompts and results: <a href="https://github.com/Ayush-M99/sigma-llm-bench">sigma-llm-bench</a>.</p>
+
+      <p>Each model got a plain-English description of 60 detections and wrote a Sigma rule for each. A rule counted as usable if it was valid Sigma, fired on the real recorded attack, and matched under 1% of about 33,000 benign Windows events. The human-written SigmaHQ rules were the reference, and all 405 SigmaHQ rules with regression data fired on their own attack events in the evaluator.</p>
+
+      <div class="table"><table>
+        <thead><tr><th>Model</th><th>Rules</th><th>Valid</th><th>Detects attack</th><th>Usable</th></tr></thead>
+        <tbody>
+          <tr><td>SigmaHQ (human)</td><td class="n">60</td><td class="n">100%</td><td class="n">100%</td><td class="n hit">100%</td></tr>
+          <tr><td>nemotron-3-ultra-550b-a55b</td><td class="n">60</td><td class="n">81.7%</td><td class="n">55.0%</td><td class="n">55.0%</td></tr>
+          <tr><td>muse-glimmer-30b</td><td class="n">60</td><td class="n">91.7%</td><td class="n">43.3%</td><td class="n">41.7%</td></tr>
+          <tr><td>gpt-oss-20b</td><td class="n">60</td><td class="n">38.3%</td><td class="n">18.3%</td><td class="n">18.3%</td></tr>
+          <tr><td>nemotron-3.5-lightning-30b-a3b</td><td class="n">58</td><td class="n">51.7%</td><td class="n">17.2%</td><td class="n">17.2%</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>What stood out</h3>
+      <ul>
+        <li><strong>Invented syntax.</strong> 81 of 238 rules were invalid, and 44 of those used a Sigma modifier that does not exist, such as <code>|regex</code> where the real one is <code>|re</code>.</li>
+        <li><strong>Wrong, not noisy.</strong> Only 1 of 157 valid rules was noisy. But 77 valid rules missed their attack, and 75 of those had the wrong detection logic. A quiet rule can still detect nothing.</li>
+        <li><strong>Hardest log sources.</strong> Registry rules were usable 44% of the time, against about 30% for process creation and PowerShell.</li>
+      </ul>
+
+      <h3>Limits of this test</h3>
+      <ul>
+        <li>One generation per rule at temperature 0.2, so these numbers carry no measure of spread.</li>
+        <li>Prompts included SigmaHQ titles and descriptions, and there is no holdout. Models may have seen these rules in training, so the scores may flatter them.</li>
+        <li>"Detects" means firing on one recorded execution. It does not cover variants of the attack.</li>
+        <li>The benign logs come from lab machines, with only 111 unique PowerShell script blocks. Enterprise false positive rates would likely be higher.</li>
+        <li>mistral-large-4 was excluded after answering only 6 of 60 tasks on the free tier.</li>
+      </ul>
+    </article>
+
+    <article id="slopsquat-results">
+      <p class="meta">October 2026 run · slopsquat-bench at f322fa79 · 4 models · 315 responses</p>
+      <h2>How often LLMs invent packages</h2>
+      <p class="note">Benchmark built and summarised by Claude. This post was checked against the repo's results files, and the benchmark was not rerun for it. Approved for publication by Ayush-M99. Code and aggregate results: <a href="https://github.com/Ayush-M99/slopsquat-bench">slopsquat-bench</a>.</p>
+
+      <p>Eighty coding requests went to each model, half Python and half Node.js, half common tasks and half niche security or hardware tooling. Every package name in an install command was checked against PyPI or npm. Across 559 mentions, 30 did not exist: 5.4%.</p>
+
+      <div class="table"><table>
+        <thead><tr><th>Task type</th><th>Names</th><th>Do not exist</th><th>Rate</th></tr></thead>
+        <tbody>
+          <tr><td>Common, Python and Node.js</td><td class="n">305</td><td class="n">0</td><td class="n hit">0.0%</td></tr>
+          <tr><td>Niche, Python</td><td class="n">121</td><td class="n">9</td><td class="n">7.4%</td></tr>
+          <tr><td>Niche, Node.js</td><td class="n">133</td><td class="n">21</td><td class="n miss">15.8%</td></tr>
+        </tbody>
+      </table></div>
+
+      <p>Rates by model ran from 2.6% (gpt-oss-20b) to 8.4% (nemotron-3.5-lightning-30b-a3b). Of 24 unique invented names, 5 came from two or more models independently. Those matter most, because one registered name would catch users of several assistants.</p>
+
+      <h3>Limits of this test</h3>
+      <ul>
+        <li>One sample per task per model, so this does not show how persistent an invented name is.</li>
+        <li>"Exists on the registry" does not mean safe. Registration dates and maintainers were not checked.</li>
+        <li>Near-miss analysis of invented names is based on examples, not a measured rate.</li>
+        <li>mistral-large-4 was excluded after answering only 24 of 80 tasks.</li>
+      </ul>
+    </article>
+
+    <article id="tracker">
+      <p class="meta">Updated 2026-10-30</p>
+      <h2>What is done and what is not</h2>
+      <p>A line moves to done only when a public link proves it.</p>
+      <div class="table"><table>
+        <thead><tr><th>Work</th><th>State</th></tr></thead>
+        <tbody>
+          <tr><td>Semgrep rule gaps confirmed</td><td>Playground run complete</td></tr>
+          <tr><td>Semgrep issue and PR</td><td><a href="https://github.com/semgrep/semgrep-rules/issues/4127">Issue #4127 filed</a>, <a href="https://github.com/semgrep/semgrep-rules/pull/4128">PR #4128 open</a>, not yet reviewed or merged</td></tr>
+          <tr><td>Sigma benchmark</td><td><a href="https://github.com/Ayush-M99/sigma-llm-bench">First run public</a>, repeat runs and holdout not done</td></tr>
+          <tr><td>Slopsquatting benchmark</td><td><a href="https://github.com/Ayush-M99/slopsquat-bench">First run public</a>, repeat runs not done</td></tr>
+        </tbody>
+      </table></div>
+    </article>
+  </main>
+
+  <footer>Sources are linked in each post. Corrections are recorded in the post they affect.</footer>
+</div>
